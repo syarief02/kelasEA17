@@ -14,7 +14,7 @@
 int OnInit()
 {
     EventSetTimer(60);
-    Print("ini adalah tick : ", TimeToStr(TimeCurrent(), TIME_DATE | TIME_SECONDS));
+    OnTick();
     return (INIT_SUCCEEDED);
 }
 //+------------------------------------------------------------------+
