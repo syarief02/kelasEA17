@@ -9,22 +9,30 @@
 #property strict
 
 // Input parameters
-input double LotSize = 0.01;
-input int StopLoss = 100;
-input int TakeProfit = 200;
+input double LotSize = 0.01; // Initial lot size for trades
+input int TakeProfit = 100;  // Take Profit in pips
+input int StopLoss = 50;    // Stop Loss in pips
 input int FastMAPeriod = 5;  // Period for the fast moving average (MA5)
 input int SlowMAPeriod = 20; // Period for the slow moving average (MA20)
+// Removed MartingaleMultiplier
+input int StartHour = 8;    // Start trading hour (London session)
+input int EndHour = 17;     // End trading hour (New York session)
 
 // Global variables
-int ticket = 0;
+int ticket = 0; // Variable to store the order ticket number
+double prevMA5 = 0; // Previous value of MA5
+double prevMA20 = 0; // Previous value of MA20
+double currentLotSize = LotSize; // Current lot size
+bool lastTradeWasLoss = false; // Flag to indicate if the last trade was a loss
+datetime lastBarTime = 0; // Time of the last bar
 
 //+------------------------------------------------------------------+
 //| Expert initialization function                                   |
 //+------------------------------------------------------------------+
 int OnInit()
 {
-    // Initialization code here
-    return(INIT_SUCCEEDED);
+    Print("EA initialized."); // Print initialization message
+    return(INIT_SUCCEEDED); // Return initialization success
 }
 
 //+------------------------------------------------------------------+
@@ -32,7 +40,7 @@ int OnInit()
 //+------------------------------------------------------------------+
 void OnDeinit(const int reason)
 {
-    // Deinitialization code here
+    Print("EA deinitialized. Reason: ", reason); // Print deinitialization message with reason
 }
 
 //+------------------------------------------------------------------+
@@ -40,58 +48,44 @@ void OnDeinit(const int reason)
 //+------------------------------------------------------------------+
 void OnTick()
 {
-    // Check for new bar
-    if(IsNewBar())
+    if(IsNewBar() && IsTradingTime()) // Check if a new bar has formed and if it's within trading hours
     {
-        // Check for MA crossover
-        int signal = CheckMACrossover();
+        int signal = CheckMACrossover(); // Check for MA crossover signal
         
         if(signal == 1)  // Buy signal
         {
-            // Close any existing sell orders
-            if(ticket > 0 && OrderSelect(ticket, SELECT_BY_TICKET) && OrderType() == OP_SELL)
-            {
-                if(!OrderClose(ticket, OrderLots(), Ask, 3, clrRed))
-                {
-                    Print("Failed to close SELL order. Error: ", GetLastError());
-                }
-            }
+            // Removed CheckLastTradeResult call
+            double tpPrice = Ask + TakeProfit * Point; // Calculate Take Profit price in points
+            double slPrice = (StopLoss > 0) ? Ask - StopLoss * Point : 0; // Calculate Stop Loss price in points, or 0 if no SL
+            ticket = OrderSend(Symbol(), OP_BUY, currentLotSize, Ask, 3, slPrice, tpPrice, "MA Crossover Buy", 0, 0, clrGreen); // Send buy order
             
-            // Open a buy order
-            ticket = OrderSend(Symbol(), OP_BUY, LotSize, Ask, 3, Ask - StopLoss * Point, Ask + TakeProfit * Point, "MA Crossover Buy", 0, 0, clrGreen);
-            
-            // Print entry message
-            if(ticket > 0)
+            if(ticket > 0) // Check if order was successful
             {
-                Print("EA entered a BUY trade. Ticket: ", ticket);
+                Print("EA entered a BUY trade. Ticket: ", ticket); // Print success message
+                lastTradeWasLoss = false; // Reset loss flag
+                // Removed ModifyTrades call
             }
             else
             {
-                Print("Failed to enter BUY trade. Error: ", GetLastError());
+                HandleOrderSendError(); // Handle order send error
             }
         }
         else if(signal == -1)  // Sell signal
         {
-            // Close any existing buy orders
-            if(ticket > 0 && OrderSelect(ticket, SELECT_BY_TICKET) && OrderType() == OP_BUY)
-            {
-                if(!OrderClose(ticket, OrderLots(), Bid, 3, clrRed))
-                {
-                    Print("Failed to close BUY order. Error: ", GetLastError());
-                }
-            }
+            // Removed CheckLastTradeResult call
+            double tpPrice = Bid - TakeProfit * Point; // Calculate Take Profit price in points
+            double slPrice = (StopLoss > 0) ? Bid + StopLoss * Point : 0; // Calculate Stop Loss price in points, or 0 if no SL
+            ticket = OrderSend(Symbol(), OP_SELL, currentLotSize, Bid, 3, slPrice, tpPrice, "MA Crossover Sell", 0, 0, clrRed); // Send sell order
             
-            // Open a sell order
-            ticket = OrderSend(Symbol(), OP_SELL, LotSize, Bid, 3, Bid + StopLoss * Point, Bid - TakeProfit * Point, "MA Crossover Sell", 0, 0, clrRed);
-            
-            // Print entry message
-            if(ticket > 0)
+            if(ticket > 0) // Check if order was successful
             {
-                Print("EA entered a SELL trade. Ticket: ", ticket);
+                Print("EA entered a SELL trade. Ticket: ", ticket); // Print success message
+                lastTradeWasLoss = false; // Reset loss flag
+                // Removed ModifyTrades call
             }
             else
             {
-                Print("Failed to enter SELL trade. Error: ", GetLastError());
+                HandleOrderSendError(); // Handle order send error
             }
         }
     }
@@ -100,32 +94,54 @@ void OnTick()
 //+------------------------------------------------------------------+
 //| Custom functions                                                 |
 //+------------------------------------------------------------------+
-// Global variables for new bar detection
-datetime lastBarTime = 0;
 
-// New bar function
+// Check if a new bar has formed
 bool IsNewBar()
 {
-    datetime currentBarTime = iTime(Symbol(), Period(), 0);
-    if(currentBarTime != lastBarTime)
+    datetime currentBarTime = iTime(Symbol(), Period(), 0); // Get the time of the current bar
+    if(currentBarTime != lastBarTime) // Check if the current bar time is different from the last bar time
     {
-        lastBarTime = currentBarTime;
-        Print("A new bar has been formed.");
-        return true;
+        lastBarTime = currentBarTime; // Update the last bar time
+        return true; // Return true if a new bar has formed
     }
-    return false;
+    return false; // Return false if no new bar has formed
 }
 
-// MA Crossover function
+// Check if it's within trading hours
+bool IsTradingTime()
+{
+    int currentHour = Hour(); // Get the current hour
+    return (currentHour >= StartHour && currentHour < EndHour); // Return true if within trading hours
+}
+
+// Check for MA crossover
 int CheckMACrossover()
 {
-    double ma5 = iMA(Symbol(), Period(), FastMAPeriod, 0, MODE_SMA, PRICE_CLOSE, 0);
-    double ma20 = iMA(Symbol(), Period(), SlowMAPeriod, 0, MODE_SMA, PRICE_CLOSE, 0);
+    double ma5 = iMA(Symbol(), Period(), FastMAPeriod, 0, MODE_SMA, PRICE_CLOSE, 0); // Calculate MA5
+    double ma20 = iMA(Symbol(), Period(), SlowMAPeriod, 0, MODE_SMA, PRICE_CLOSE, 0); // Calculate MA20
     
-    if(ma5 > ma20)
-        return 1;  // Buy signal
-    else if(ma5 < ma20)
-        return -1; // Sell signal
-    else
-        return 0;  // No signal
+    if(prevMA5 != 0 && prevMA20 != 0) // Ensure previous values are set
+    {
+        if(prevMA5 <= prevMA20 && ma5 > ma20) // Check for bullish crossover
+            return 1;  // Buy signal
+        else if(prevMA5 >= prevMA20 && ma5 < ma20) // Check for bearish crossover
+            return -1; // Sell signal
+    }
+    
+    prevMA5 = ma5; // Update previous MA5 value
+    prevMA20 = ma20; // Update previous MA20 value
+    
+    return 0;  // No signal
+}
+
+// Removed CheckLastTradeResult function
+
+// Removed ModifyTrades function
+
+// Handle OrderSend errors
+void HandleOrderSendError()
+{
+    int error = GetLastError(); // Get last error
+    Print("Failed to enter trade. Error: ", error); // Print general error message
+    ResetLastError(); // Reset last error
 }
