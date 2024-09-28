@@ -1,13 +1,38 @@
 //+------------------------------------------------------------------+
-//|                                            Kelas17ea5b.mq4      |
-//|                        Copyright 2023, Your Name                 |
-//|                                             https://www.mql5.com |
+//|                                EA BU ATR BreakEven Engulfing.mq4 |
+//|                                  Copyright 2024, BuBat's Trading |
+//|                                 https://twitter.com/SyariefAzman |
 //+------------------------------------------------------------------+
-// Removed the include for Trade.mqh
-
+//---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+// sourcesatr
+#define Version            "1.00"
+#property version          Version
+#property link "https://m.me/EABudakUbat"
+#property description "This is a ATR BreakEven Engulfing EA "
+#property description "recommended timeframe M5, choose ranging pair."
+#property description " "
+#property description "Recommended using a cent account for 100 usd capital"
+#property description " "
+#property description "Join our Telegram channel : t.me/EABudakUbat"
+#property description "Facebook : m.me/EABudakUbat"
+#property description "+60194961568 (Budak Ubat)"
+#property icon "\\Images\\bupurple.ico";
+#property strict
+#include <stdlib.mqh>
+#include <WinUser32.mqh>
+#define Copyright "Copyright © 2023, BuBat's Trading"
+#property copyright Copyright
+//+------------------------------------------------------------------+
+//| Name of the EA                                                   |
+//+------------------------------------------------------------------+
+#define ExpertName       "[https://t.me/SyariefAzman] "
+extern string EA_Name = ExpertName;
+string Owner = "BUDAK UBAT";
+string Contact = "WHATSAPP/TELEGRAM : +60194961568";
+string MB_CAPTION = ExpertName + " v" + Version + " | " + Copyright;
 // Input parameters
 extern int MaxLayer = 10;
-extern double LotSize = 0.01;
+extern double LotSize = 0.01; // Keep this declaration
 extern double StopLoss = 100;
 extern double TakeProfit = 200;
 extern int RSIPeriod = 14; // RSI period input parameter
@@ -21,6 +46,37 @@ extern double ATRMultiplier = 1.5; // ATR multiplier input parameter
 
 // Global variables
 int ticket = 0;
+
+// Function to return authorization message
+string AuthMessage() {
+    return "Your authorization message here."; // Customize as needed
+}
+
+// Function to count buy orders
+int CountBuy() {
+    int count = 0;
+    for (int i = OrdersTotal() - 1; i >= 0; i--) {
+        if (OrderSelect(i, SELECT_BY_POS, MODE_TRADES)) {
+            if (OrderType() == OP_BUY && OrderSymbol() == Symbol()) {
+                count++;
+            }
+        }
+    }
+    return count;
+}
+
+// Function to count sell orders
+int CountSell() {
+    int count = 0;
+    for (int i = OrdersTotal() - 1; i >= 0; i--) {
+        if (OrderSelect(i, SELECT_BY_POS, MODE_TRADES)) {
+            if (OrderType() == OP_SELL && OrderSymbol() == Symbol()) {
+                count++;
+            }
+        }
+    }
+    return count;
+}
 
 //+------------------------------------------------------------------+
 //| Expert initialization function                                   |
@@ -46,6 +102,22 @@ void OnDeinit(const int reason)
 //+------------------------------------------------------------------+
 void OnTick()
 {
+    //-- Get Date String
+   datetime Today = StrToTime(StringConcatenate(Year(), ".", Month(), ".", Day()));
+   string Date = TimeToStr(TimeCurrent(), TIME_DATE + TIME_MINUTES + TIME_SECONDS); //"yyyy.mm.dd"
+//--EA Comment--
+
+     {
+      Comment(
+         "\n ", Copyright,
+         "\n ", Date, "\n",
+         "\n ", AuthMessage(), "\n",
+         "\n ", EA_Name,
+         "\n Starting Lot: ", LotSize,
+         "\n Equity: $", NormalizeDouble(AccountInfoDouble(ACCOUNT_EQUITY), 2),
+         "\n Buy: ", CountBuy(), " | Sell: ", CountSell(),
+         "\n");
+     }
     // Main(); // Removed the call to Main() since it's undefined
     ApplyTrailingAndBreakeven(BreakevenPips, TrailingPips);
     ApplyATRTrailingStop(ATRPeriod, ATRMultiplier);
@@ -134,7 +206,7 @@ void ApplyATRTrailingStop(int atrPeriod, double atrMultiplier)
                     newStop = NormalizeDouble(Ask + trailingPips * Point, Digits);
                     if(newStop < OrderStopLoss())
                     {
-                         result = OrderModify(OrderTicket(), OrderOpenPrice(), newStop, OrderTakeProfit(), 0, clrNONE);
+                         bool result = OrderModify(OrderTicket(), OrderOpenPrice(), newStop, OrderTakeProfit(), 0, clrNONE);
                         if(result)
                         {
                             Print("Trailing stop applied successfully");
@@ -194,7 +266,7 @@ void MoveToBreakeven(int breakevenPips)
                     distance = (entryPrice - currentPrice) / Point;
                     if(distance >= breakevenPips && OrderStopLoss() > entryPrice)
                     {
-                         result = OrderModify(OrderTicket(), entryPrice, entryPrice, OrderTakeProfit(), 0, clrNONE);
+                         bool result = OrderModify(OrderTicket(), entryPrice, entryPrice, OrderTakeProfit(), 0, clrNONE);
                         if(result)
                         {
                             Print("Breakeven applied successfully");
