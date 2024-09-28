@@ -14,6 +14,9 @@ input int TakeProfit = 100;  // Take Profit in pips
 input int StopLoss = 50;    // Stop Loss in pips
 input int FastMAPeriod = 3;  // Period for the fast moving average (3 minutes)
 input int SlowMAPeriod = 15;  // Period for the slow moving average (15 minutes)
+input int RSIPeriod = 14; // RSI period
+input double RSIBuy = 70; // RSI buy threshold
+input double RSISell = 30; // RSI sell threshold
 // Removed MartingaleMultiplier
 input int StartHour = 8;    // Start trading hour (London session)
 input int EndHour = 17;     // End trading hour (New York session)
@@ -88,6 +91,21 @@ void OnTick()
                 HandleOrderSendError(); // Handle order send error
             }
         }
+
+        // Add pattern detection logic
+        int index = 1; // Current bar index
+        double rsi = iRSI(NULL, 0, RSIPeriod, PRICE_CLOSE, 0);
+        
+        if (isBullishEngulfing(index) && rsi >= RSIBuy)
+        {
+            Print("Bullish Engulfing pattern detected at bar ", index, " with RSI ", rsi);
+            OpenPosition(OP_BUY); // Open buy position
+        }
+        if (isBearishEngulfing(index) && rsi <= RSISell)
+        {
+            Print("Bearish Engulfing pattern detected at bar ", index, " with RSI ", rsi);
+            OpenPosition(OP_SELL); // Open sell position
+        }
     }
 }
 
@@ -144,4 +162,40 @@ void HandleOrderSendError()
     int error = GetLastError(); // Get last error
     Print("Failed to enter trade. Error: ", error); // Print general error message
     ResetLastError(); // Reset last error
+}
+
+// Function to check for Bullish Engulfing pattern
+bool isBullishEngulfing(int index)
+{
+    return (Close[index + 1] < Open[index + 1] && // Previous candle is bearish
+            Close[index] > Open[index] &&         // Current candle is bullish
+            Open[index] < Close[index + 1] &&     // Current open is below previous close
+            Close[index] > Open[index + 1]);      // Current close is above previous open
+}
+
+// Function to check for Bearish Engulfing pattern
+bool isBearishEngulfing(int index)
+{
+    return (Close[index + 1] > Open[index + 1] && // Previous candle is bullish
+            Close[index] < Open[index] &&         // Current candle is bearish
+            Open[index] > Close[index + 1] &&     // Current open is above previous close
+            Close[index] < Open[index + 1]);      // Current close is below previous open
+}
+
+// Function to open a position
+void OpenPosition(int orderType)
+{
+    double price = (orderType == OP_BUY) ? Ask : Bid;
+    double sl = (orderType == OP_BUY) ? price - StopLoss * Point : price + StopLoss * Point;
+    double tp = (orderType == OP_BUY) ? price + TakeProfit * Point : price - TakeProfit * Point;
+
+    int ticket = OrderSend(Symbol(), orderType, LotSize, price, 3, sl, tp, "Engulfing Signal", 0, 0, clrGreen);
+    if (ticket < 0)
+    {
+        Print("Failed to open order. Error: ", GetLastError());
+    }
+    else
+    {
+        Print("Order opened successfully. Ticket: ", ticket);
+    }
 }
