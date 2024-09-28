@@ -1,9 +1,9 @@
 //+------------------------------------------------------------------+
-//|                                                    kelas17ea5.mq4 |
-//|                        Copyright 2023, MetaQuotes Software Corp. |
+//|                                            Kelas17eaLima.mq4     |
+//|                        Copyright 2023, Your Name                 |
 //|                                             https://www.mql5.com |
 //+------------------------------------------------------------------+
-#property copyright "Copyright 2023, MetaQuotes Software Corp."
+#property copyright "Copyright 2023, Your Name"
 #property link "https://www.mql5.com"
 #property version "1.00"
 #property strict
@@ -12,27 +12,25 @@ extern int MaxLayer = 10;
 extern double LotSize = 0.01;
 extern double StopLoss = 100;
 extern double TakeProfit = 200;
-input int RSIPeriod = 14; // RSI period
-input double RSIBuy = 70; // RSI buy threshold
-input double RSISell = 30; // RSI sell threshold
+extern int RSIPeriod = 14; // RSI period input parameter
+extern double RSIBuy = 70; // RSI value for BUY input parameter
+extern double RSISell = 30; // RSI value for SELL input parameter
+extern int BreakevenPips = 20; // Pips to move to breakeven
+extern int TrailingPips = 10; // Pips for trailing stop
+extern int MagicNumber = 12345; // Magic number input parameter
+extern int ATRPeriod = 14; // ATR period input parameter
+extern double ATRMultiplier = 1.5; // ATR multiplier input parameter
 
-extern int TrailingStopPips = 10; // User-defined trailing stop in pips
-extern int BreakevenPips = 20;      // User-defined breakeven in pips
-
-extern int ATRPeriod = 14;          // User-defined ATR period
-extern double ATRMultiplier = 1.5;  // User-defined ATR multiplier
-
+// Global variables
 int ticket = 0;
-#define INIT_SUCCEEDED 0
+
 //+------------------------------------------------------------------+
 //| Expert initialization function                                   |
 //+------------------------------------------------------------------+
 int OnInit()
 {
     if (TakeProfit <= 0)
-    {
         TakeProfit = 200;
-    }
     // Initialization code here
     return (INIT_SUCCEEDED);
 }
@@ -50,83 +48,89 @@ void OnDeinit(const int reason)
 //+------------------------------------------------------------------+
 void OnTick()
 {
-    // Main trading logic here
-    if (newbar())
-    {
-        // Logic to execute when a new bar is formed
-        int index = 1; // Current bar index
-        double rsi = iRSI(NULL, 0, RSIPeriod, PRICE_CLOSE, 0);
-        
-        if (isBullishEngulfing(index) && rsi >= RSIBuy)
-        {
-            Print("Bullish Engulfing pattern detected at bar ", index, " with RSI ", rsi);
-            OpenPosition(OP_BUY); // Open buy position
-        }
-        if (isBearishEngulfing(index) && rsi <= RSISell)
-        {
-            Print("Bearish Engulfing pattern detected at bar ", index, " with RSI ", rsi);
-            OpenPosition(OP_SELL); // Open sell position
-        }
-    }
-
-    // Apply dynamic ATR trailing stop and breakeven logic
-    ApplyATRTrailingStop(ATRPeriod, ATRMultiplier); // Use user-defined ATR parameters
-    MoveToBreakeven(BreakevenPips);
+    Main();
+    ApplyTrailingAndBreakeven(BreakevenPips, TrailingPips);
+    ApplyATRTrailingStop(ATRPeriod, ATRMultiplier);
 }
 
-//+------------------------------------------------------------------+
-//| Function to check if a new bar has formed                        |
-//+------------------------------------------------------------------+
-bool newbar()
-{
+bool newbar() {
     static datetime lastTime = 0;
-    datetime currentTime = iTime(NULL, 0, 0);
-    if (currentTime != lastTime)
-    {
+    datetime currentTime = Time[0];
+    if (currentTime != lastTime) {
         lastTime = currentTime;
         return true;
     }
     return false;
 }
 
+void Main() {
+    if (!newbar()) return;
+    // Print("newbar");
+    int latestBarIndex = 1; // Index of the latest bar
+
+    double rsiValue = iRSI(NULL, 0, RSIPeriod, PRICE_CLOSE, latestBarIndex);
+
+    if (isBullishEngulfing(latestBarIndex) && rsiValue >= RSIBuy) {
+        // Add your logic for bullish engulfing pattern with RSI filter
+        Print("Bullish Engulfing detected at the latest bar with RSI >= ", RSIBuy);
+        OpenBuyOrder();
+    }
+    if (isBearishEngulfing(latestBarIndex) && rsiValue <= RSISell) {
+        // Add your logic for bearish engulfing pattern with RSI filter
+        Print("Bearish Engulfing detected at the latest bar with RSI <= ", RSISell);
+        OpenSellOrder();
+    }
+
+    // ... existing Main() function code ...
+}
+
 // Function to check for Bullish Engulfing pattern
-bool isBullishEngulfing(int index)
-{
-    return (Close[index + 1] < Open[index + 1] && // Previous candle is bearish
-            Close[index] > Open[index] &&         // Current candle is bullish
-            Open[index] < Close[index + 1] &&     // Current open is below previous close
-            Close[index] > Open[index + 1]);      // Current close is above previous open
+bool isBullishEngulfing(int index) {
+    double open1 = iOpen(NULL, 0, index + 1);
+    double close1 = iClose(NULL, 0, index + 1);
+    double open2 = iOpen(NULL, 0, index);
+    double close2 = iClose(NULL, 0, index);
+
+    return (close1 < open1 && close2 > open2 && close2 > open1 && close1 < open2);
 }
 
 // Function to check for Bearish Engulfing pattern
-bool isBearishEngulfing(int index)
-{
-    return (Close[index + 1] > Open[index + 1] && // Previous candle is bullish
-            Close[index] < Open[index] &&         // Current candle is bearish
-            Open[index] > Close[index + 1] &&     // Current open is above previous close
-            Close[index] < Open[index + 1]);      // Current close is below previous open
+bool isBearishEngulfing(int index) {
+    double open1 = iOpen(NULL, 0, index + 1);
+    double close1 = iClose(NULL, 0, index + 1);
+    double open2 = iOpen(NULL, 0, index);
+    double close2 = iClose(NULL, 0, index);
+
+    return (close1 > open1 && close2 < open2 && close2 < open1 && close1 > open2);
 }
 
-// Function to open a position
-void OpenPosition(int orderType)
-{
-    double price = (orderType == OP_BUY) ? Ask : Bid;
-    double sl = (orderType == OP_BUY) ? price - StopLoss * Point : price + StopLoss * Point;
-    double tp = (orderType == OP_BUY) ? price + TakeProfit * Point : price - TakeProfit * Point;
+// Function to open a BUY order
+void OpenBuyOrder() {
+    double price = Ask;
+    double sl = price - StopLoss * Point;
+    double tp = price + TakeProfit * Point;
 
-    int orderTicket = OrderSend(Symbol(), orderType, LotSize, price, 3, sl, tp, "Engulfing Signal", 0, 0, clrGreen);
-    if (orderTicket < 0)
-    {
-        Print("Failed to open order. Error: ", GetLastError());
-    }
-    else
-    {
-        Print("Order opened successfully. Ticket: ", orderTicket);
+    ticket = OrderSend(Symbol(), OP_BUY, LotSize, price, 3, sl, tp, "Buy Order", MagicNumber, 0, Green);
+    if (ticket < 0) {
+        Print("Error opening BUY order: ", GetLastError());
+    } else {
+        Print("BUY order opened successfully");
     }
 }
 
-// Global variables
-int MagicNumber = 12345; // Add MagicNumber for order identification
+// Function to open a SELL order
+void OpenSellOrder() {
+    double price = Bid;
+    double sl = price + StopLoss * Point;
+    double tp = price - TakeProfit * Point;
+
+    ticket = OrderSend(Symbol(), OP_SELL, LotSize, price, 3, sl, tp, "Sell Order", MagicNumber, 0, Red);
+    if (ticket < 0) {
+        Print("Error opening SELL order: ", GetLastError());
+    } else {
+        Print("SELL order opened successfully");
+    }
+}
 
 // Function: ApplyATRTrailingStop
 void ApplyATRTrailingStop(int atrPeriod, double atrMultiplier)
@@ -155,6 +159,53 @@ void ApplyATRTrailingStop(int atrPeriod, double atrMultiplier)
                        {
                            Print("Failed to apply trailing stop");
                        }
+                    }
+                }
+                else if(OrderType() == OP_SELL)
+                {
+                    newStop = NormalizeDouble(Ask + trailingPips * Point, Digits);
+                    if(newStop < OrderStopLoss())
+                    {
+                        bool result = OrderModify(OrderTicket(), OrderOpenPrice(), newStop, OrderTakeProfit(), 0, clrNONE);
+                        if(result)
+                        {
+                            Print("Trailing stop applied successfully");
+                        }
+                        else
+                        {
+                            Print("Failed to apply trailing stop");
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Function: ApplyFixedTrailingStop
+void ApplyFixedTrailingStop(int trailingPips)
+{
+    for(int i=OrdersTotal()-1; i>=0; i--)
+    {
+        if(OrderSelect(i, SELECT_BY_POS, MODE_TRADES))
+        {
+            if(OrderMagicNumber() == MagicNumber && OrderSymbol() == Symbol())
+            {
+                double newStop;
+                if(OrderType() == OP_BUY)
+                {
+                    newStop = NormalizeDouble(Bid - trailingPips * Point, Digits);
+                    if(newStop > OrderStopLoss())
+                    {
+                        bool result = OrderModify(OrderTicket(), OrderOpenPrice(), newStop, OrderTakeProfit(), 0, clrNONE);
+                        if(result)
+                        {
+                            Print("Trailing stop applied successfully");
+                        }
+                        else
+                        {
+                            Print("Failed to apply trailing stop");
+                        }
                     }
                 }
                 else if(OrderType() == OP_SELL)
@@ -226,4 +277,14 @@ void MoveToBreakeven(int breakevenPips)
             }
         }
     }
+}
+
+// Function: ApplyTrailingAndBreakeven
+void ApplyTrailingAndBreakeven(int breakevenPips, int trailingPips)
+{
+    // First, move to breakeven
+    MoveToBreakeven(breakevenPips);
+    
+    // Then, apply trailing stop
+    ApplyFixedTrailingStop(trailingPips);
 }
