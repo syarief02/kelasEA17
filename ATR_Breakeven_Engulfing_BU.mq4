@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 //---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 // sourcesatr
-#define Version            "1.00"
+#define Version            "1.01"
 #property version          Version
 #property link "https://m.me/EABudakUbat"
 #property description "This is a ATR BreakEven Engulfing EA "
@@ -47,6 +47,8 @@ extern double ATRMultiplier = 1.5; // ATR multiplier input parameter
 // Global variables
 int ticket = 0;
 
+datetime lastTradeTime = 0; // Variable to store the last trade time
+
 // Function to return authorization message
 string AuthMessage() {
     return "Your authorization message here."; // Customize as needed
@@ -76,6 +78,41 @@ int CountSell() {
         }
     }
     return count;
+}
+
+// Function to check if a new day has started
+bool IsNewDay()
+{
+    static datetime lastDay = 0;
+    datetime currentDay = iTime(NULL, PERIOD_D1, 0);
+    if (currentDay != lastDay)
+    {
+        lastDay = currentDay;
+        return true;
+    }
+    return false;
+}
+
+// Function to check if a trade has been made in the last day
+bool HasTradedInLastDay()
+{
+    return (lastTradeTime != 0 && TimeCurrent() - lastTradeTime < 86400); // 86400 seconds in a day
+}
+
+// Function to open a trade based on the daily candle
+void OpenTradeBasedOnDailyCandle()
+{
+    double dailyOpen = iOpen(NULL, PERIOD_D1, 0);
+    double dailyClose = iClose(NULL, PERIOD_D1, 0);
+
+    if (dailyClose > dailyOpen) // Bullish candle
+    {
+        OpenBuyOrder();
+    }
+    else if (dailyClose < dailyOpen) // Bearish candle
+    {
+        OpenSellOrder();
+    }
 }
 
 //+------------------------------------------------------------------+
@@ -119,6 +156,14 @@ void OnTick()
          "\n");
      }
     // Main(); // Removed the call to Main() since it's undefined
+    // Check if a new day has started and if no trades have been made in the last day
+    if (IsNewDay() && !HasTradedInLastDay())
+    {
+        OpenTradeBasedOnDailyCandle(); // Open trade based on the daily candle
+        lastTradeTime = TimeCurrent(); // Update last trade time
+    }
+
+    // Existing trading logic...
     ApplyTrailingAndBreakeven(BreakevenPips, TrailingPips);
     ApplyATRTrailingStop(ATRPeriod, ATRMultiplier);
     StopLossManagement();   // Manage SL for all open positions on every tick
